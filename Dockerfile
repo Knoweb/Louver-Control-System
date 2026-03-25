@@ -5,15 +5,15 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml* package-lock.yaml* yarn.lock* ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+COPY package.json package-lock.json* pnpm-lock.yaml* ./
+RUN npm install
 
 # Build the source code
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm install -g pnpm && pnpm run build
+RUN npm run build
 
 # Production image, copy all files and run Next.js standalone
 FROM base AS runner
