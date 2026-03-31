@@ -1,0 +1,1 @@
+import React from 'react'; import { LineChart } from '@mui/x-charts/LineChart'; export function Test() { return <LineChart xAxis={[{ data: [new Date()], scaleType: 'time' }]} series={[{ data: [1] }]} /> }
