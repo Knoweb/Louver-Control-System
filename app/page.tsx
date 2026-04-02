@@ -770,13 +770,25 @@ export default function TeaFactoryDashboard() {
 
     setDownloadStatus("Filtering last 24 hours data...")
 
-    // Filter data from last 24 hours
+    // Filter data for 4 PM to 4 PM
     const now = new Date()
-    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const current4PM = new Date(now)
+    current4PM.setHours(16, 0, 0, 0)
+    
+    let startTime, endTime
+    if (now.getTime() < current4PM.getTime()) {
+      startTime = new Date(current4PM)
+      startTime.setDate(startTime.getDate() - 1)
+      endTime = new Date(current4PM)
+    } else {
+      startTime = new Date(current4PM)
+      endTime = new Date(current4PM)
+      endTime.setDate(endTime.getDate() + 1)
+    }
 
     const filteredData = completeData.filter((reading) => {
       const readingTime = new Date(reading.timestamp)
-      return readingTime >= twentyFourHoursAgo
+      return readingTime >= startTime && readingTime <= endTime
     })
 
     console.log(
@@ -786,7 +798,7 @@ export default function TeaFactoryDashboard() {
     const headers = [
       "# Tea Factory Louver Control System - Last 24 Hours Data",
       `# Export Date: ${new Date().toLocaleString()}`,
-      `# Time Range: Last 24 hours (${twentyFourHoursAgo.toLocaleString()} to ${now.toLocaleString()})`,
+      `# Time Range: Last 24 hours (${startTime.toLocaleString()} to ${now.toLocaleString()})`,
       `# Data Points: ${filteredData.length} readings`,
       "",
       "Timestamp (Local Time),Dry Temperature (°F),Relative Humidity (%),Wet Temperature (°F),Depression (°F),Louver Status",
