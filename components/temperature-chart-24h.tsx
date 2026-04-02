@@ -16,13 +16,25 @@ interface TemperatureChart24hProps {
 }
 
 export function TemperatureChart24h({ data }: TemperatureChart24hProps) {
-  // Filter data for last 24 hours
+  // Filter data for 4 PM to 4 PM
   const now = new Date()
-  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const current4PM = new Date(now)
+  current4PM.setHours(16, 0, 0, 0)
+  
+  let startTime, endTime
+  if (now.getTime() < current4PM.getTime()) {
+    startTime = new Date(current4PM)
+    startTime.setDate(startTime.getDate() - 1)
+    endTime = new Date(current4PM)
+  } else {
+    startTime = new Date(current4PM)
+    endTime = new Date(current4PM)
+    endTime.setDate(endTime.getDate() + 1)
+  }
 
   const last24hData = data.filter((reading) => {
     const readingTime = new Date(reading.timestamp)
-    return readingTime >= twentyFourHoursAgo
+    return readingTime >= startTime && readingTime <= endTime
   })
 
   const sortedData = [...last24hData].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())

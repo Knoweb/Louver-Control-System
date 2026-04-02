@@ -15,9 +15,21 @@ interface LouverStatusChart24hProps {
 }
 
 export function LouverStatusChart24h({ data }: LouverStatusChart24hProps) {
-  // Filter data for last 24 hours
+  // Filter data for 4 PM to 4 PM
   const now = new Date()
-  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const current4PM = new Date(now)
+  current4PM.setHours(16, 0, 0, 0)
+  
+  let startTime, endTime
+  if (now.getTime() < current4PM.getTime()) {
+    startTime = new Date(current4PM)
+    startTime.setDate(startTime.getDate() - 1)
+    endTime = new Date(current4PM)
+  } else {
+    startTime = new Date(current4PM)
+    endTime = new Date(current4PM)
+    endTime.setDate(endTime.getDate() + 1)
+  }
 
   const parsedData = data
     .map((reading) => {
@@ -30,7 +42,7 @@ export function LouverStatusChart24h({ data }: LouverStatusChart24hProps) {
         date: parsedDate,
       }
     })
-    .filter((item) => !isNaN(item.date.getTime()) && item.date >= twentyFourHoursAgo)
+    .filter((item) => !isNaN(item.date.getTime()) && item.date >= startTime && item.date <= endTime)
     .sort((a, b) => a.date.getTime() - b.date.getTime())
 
   const chartData = parsedData.map((item) => {
