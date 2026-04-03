@@ -40,6 +40,7 @@ const isAbortError = (error: unknown) => {
   return error instanceof Error && error.name === "AbortError"
 }
 
+
 const generateMockData = (): SensorReading[] => {
   const now = new Date()
   const data: SensorReading[] = []
@@ -473,84 +474,55 @@ export default function TeaFactoryDashboard() {
   }, [])
 
   const updateSensorData = useCallback(async () => {
-    console.log("[v0] Generating new sensor reading...")
+    console.log("[v0] Fetching new sensor reading...")
     setIsUpdating(true)
     const now = new Date()
-    let newReading: SensorReading
 
-    if (dataSource === "firebase") {
-      const firebaseReading = await fetchFirebaseData()
-      if (firebaseReading) {
-        // Check if data is stale (older than 5 minutes)
-        const firebaseTimestamp = new Date(firebaseReading.timestamp)
-        const dataAge = Math.abs(Date.now() - firebaseTimestamp.getTime())
-        const isStale = dataAge > 5 * 60 * 1000 // 5 minutes
+    const firebaseReading = await fetchFirebaseData()
+    if (firebaseReading) {
+      const firebaseTimestamp = new Date(firebaseReading.timestamp)
+      const dataAge = Math.abs(Date.now() - firebaseTimestamp.getTime())
+      const isStale = dataAge > 5 * 60 * 1000 // 5 minutes
 
-        if (isStale) {
-          console.log("[v0] Firebase data is too stale, using zero reading")
-          newReading = createZeroReading()
-          setFirebaseConnected(false)
-          console.log("[v0] Using zero values due to stale Firebase:", newReading)
+      if (isStale) {
+        console.log("[v0] Firebase data is too stale, showing zero log")
+        setFirebaseConnected(false)
+        setCurrentReading(createZeroReading())
+      } else {
+        const isDuplicate = currentReading && 
+          currentReading.timestamp === firebaseReading.timestamp &&
+          currentReading.dryTemp === firebaseReading.dryTemp &&
+          currentReading.rh === firebaseReading.rh
+
+        if (isDuplicate) {
+          console.log("[v0] WARNING: Received duplicate data from Firebase")
         } else {
-          // Check if this is the same data as the last reading
-          const isDuplicate =
-            currentReading &&
-            currentReading.timestamp === firebaseReading.timestamp &&
-            currentReading.dryTemp === firebaseReading.dryTemp &&
-            currentReading.rh === firebaseReading.rh
-
-          if (isDuplicate) {
-            console.log("[v0] WARNING: Received duplicate data from Firebase - ESP32 may not be sending new data")
-            setIsUpdating(false)
-            return // Don't add duplicate data
-          }
-
-          newReading = firebaseReading
           setFirebaseConnected(true)
           setLastValidFirebaseTime(firebaseTimestamp)
-          console.log("[v0] Firebase reading:", newReading)
+          
+          setSensorData((prev) => {
+            const newData = [...prev.slice(-19), firebaseReading]
+            newData.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+            return newData
+          })
+          setHistoricalData((prev) => {
+            const newHistorical = [...prev, firebaseReading]
+            newHistorical.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+            return newHistorical
+          })
+          setCurrentReading(firebaseReading)
         }
-      } else {
-        setFirebaseConnected(false)
-        console.log("[v0] Firebase failed, returning zero readings")
-        newReading = createZeroReading()
       }
     } else {
-      newReading = {
-        timestamp: now.toISOString(),
-        dryTemp: 76 + Math.random() * 8,
-        rh: 58 + Math.random() * 12,
-        wetTemp: 70 + Math.random() * 6,
-        depression: 5 + Math.random() * 4,
-        louverStatus: Math.random() > 0.4 ? "Open" : "Closed",
-      }
-      console.log("[v0] Mock reading:", newReading)
+      setFirebaseConnected(false)
+      console.log("[v0] Firebase failed, showing zero readings")
+      setCurrentReading(createZeroReading())
     }
 
-    setSensorData((prev) => {
-      const newData = [...prev.slice(-19), newReading]
-      // Sort data chronologically
-      newData.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-      console.log("[v0] Updated sensor data array length:", newData.length)
-      return newData
-    })
-    setHistoricalData((prev) => {
-      const newHistorical = [...prev, newReading]
-      // Sort historical data chronologically
-      newHistorical.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-      console.log("[v0] Updated historical data length:", newHistorical.length)
-      return newHistorical
-    })
-    setCurrentReading(newReading)
     setLastUpdate(now)
-    setUpdateCount((prev) => {
-      const newCount = prev + 1
-      console.log("[v0] Update count:", newCount)
-      return newCount
-    })
-
+    setUpdateCount((prev) => prev + 1)
     setTimeout(() => setIsUpdating(false), 500)
-  }, [dataSource, currentReading])
+  }, [currentReading])
 
   useEffect(() => {
     const initializeData = async () => {
@@ -564,7 +536,7 @@ export default function TeaFactoryDashboard() {
         const connected = testData !== null
         setFirebaseConnected(connected)
 
-        if (testData && dataSource === "firebase") {
+        if (testData) {
           console.log("[v0] Fetching initial 24h historical data...")
           const initial24hData = await fetchAllFirebaseData(2880) // roughly 24 hours at 30s intervals
 
@@ -588,7 +560,8 @@ export default function TeaFactoryDashboard() {
             setFirebaseConnected(false)
           }
         } else {
-          console.log("[v0] Firebase connection failed, using mock data")
+          console.log("[v0] Firebase connection failed, showing zero reading")
+          setCurrentReading(createZeroReading())
           setFirebaseConnected(false)
         }
       } catch (error) {
@@ -635,16 +608,6 @@ export default function TeaFactoryDashboard() {
 
     handleDataSourceChange()
   }, [dataSource])
-
-  const toggleDataSource = async () => {
-    const newSource = dataSource === "mock" ? "firebase" : "mock"
-    setDataSource(newSource)
-
-    if (newSource === "firebase") {
-      const testData = await fetchFirebaseData()
-      setFirebaseConnected(testData !== null)
-    }
-  }
 
   const downloadCSV = async () => {
     console.log("[v0] Starting complete CSV export...")
@@ -729,7 +692,7 @@ export default function TeaFactoryDashboard() {
       `[v0] CSV export completed: ${filteredData.length} readings from ${dataSourceInfo} (ALL PAST DATA INCLUDED)`,
     )
 
-    setDownloadStatus(`✅ Downloaded: ${filename} (${filteredData.length} total readings - ALL PAST DATA INCLUDED)`)
+    setDownloadStatus(`âœ… Downloaded: ${filename} (${filteredData.length} total readings - ALL PAST DATA INCLUDED)`)
 
     setTimeout(() => {
       setDownloadStatus("")
@@ -837,7 +800,7 @@ export default function TeaFactoryDashboard() {
       `[v0] CSV export completed: ${filteredData.length} readings from last 24 hours from ${dataSourceInfo}`,
     )
 
-    setDownloadStatus(`✅ Downloaded: ${filename} (${filteredData.length} readings from last 24 hours)`)
+    setDownloadStatus(`âœ… Downloaded: ${filename} (${filteredData.length} readings from last 24 hours)`)
 
     setTimeout(() => {
       setDownloadStatus("")
@@ -1059,12 +1022,7 @@ export default function TeaFactoryDashboard() {
                 <Badge variant="outline" className="text-sm px-3 py-2 border-gray-500 text-gray-700 bg-gray-50">
                   Updates: {updateCount}
                 </Badge>
-                <Badge
-                  variant="outline"
-                  className={`text-sm px-3 py-2 ${dataSource === "firebase" ? "border-orange-500 text-orange-700 bg-orange-50" : "border-purple-500 text-purple-700 bg-purple-50"}`}
-                >
-                  {dataSource === "firebase" ? "Firebase (30s)" : "Mock (30s)"}
-                </Badge>
+                <Badge variant="outline" className="text-sm px-3 py-2 border-orange-500 text-orange-700 bg-orange-50">Firebase (30s)</Badge>
                 {dataSource === "firebase" && (
                   <Badge
                     variant="outline"
@@ -1083,9 +1041,7 @@ export default function TeaFactoryDashboard() {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={toggleDataSource} className="h-9 w-9 p-0 bg-transparent">
-                    {dataSource === "firebase" ? <Database className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
-                  </Button>
+                  
                   <Button
                     variant="outline"
                     size="sm"
@@ -1206,7 +1162,24 @@ export default function TeaFactoryDashboard() {
 
         {/* Last 24 Hours Charts Section */}
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Last 24 Hours Overview</h2>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Last 24 Hours Overview</h2>
+            {mounted && (() => {
+              const now = new Date()
+              const today4PM = new Date(now)
+              today4PM.setHours(16, 0, 0, 0)
+              const yesterday4PM = new Date(today4PM)
+              yesterday4PM.setDate(yesterday4PM.getDate() - 1)
+              const endTime = now < today4PM ? today4PM : new Date(today4PM.getTime() + 86400000)
+              const startTime = new Date(endTime.getTime() - 86400000)
+              const fmt = (d: Date) => d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+              return (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {fmt(startTime)} &rarr; {fmt(endTime)}
+                </p>
+              )
+            })()}
+          </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             <div className="xl:col-span-2">
               <div className="w-full overflow-hidden rounded-lg shadow-sm bg-white">
@@ -1241,12 +1214,12 @@ export default function TeaFactoryDashboard() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <Button
                   onClick={downloadLast24HoursCSV}
-                  disabled={!!downloadStatus && !downloadStatus.includes("✅")}
+                  disabled={!!downloadStatus && !downloadStatus.includes("âœ…")}
                   className="gap-2 bg-blue-600 hover:bg-blue-700 w-full sm:flex-1 px-6 py-3"
                 >
                   <Download className="h-4 w-4 flex-shrink-0" />
                   <span className="text-balance leading-tight">
-                    {downloadStatus && !downloadStatus.includes("✅") && downloadStatus.includes("24")
+                    {downloadStatus && !downloadStatus.includes("âœ…") && downloadStatus.includes("24")
                       ? downloadStatus
                       : "Download Last 24 Hours (CSV)"}
                   </span>
@@ -1254,12 +1227,12 @@ export default function TeaFactoryDashboard() {
 
                 <Button
                   onClick={downloadCSV}
-                  disabled={!!downloadStatus && !downloadStatus.includes("✅")}
+                  disabled={!!downloadStatus && !downloadStatus.includes("âœ…")}
                   className="gap-2 bg-green-600 hover:bg-green-700 w-full sm:flex-1 px-6 py-3"
                 >
                   <Download className="h-4 w-4 flex-shrink-0" />
                   <span className="text-balance leading-tight">
-                    {downloadStatus && !downloadStatus.includes("✅") && !downloadStatus.includes("24")
+                    {downloadStatus && !downloadStatus.includes("âœ…") && !downloadStatus.includes("24")
                       ? downloadStatus
                       : "Download All Historical Data (CSV)"}
                   </span>
@@ -1268,16 +1241,16 @@ export default function TeaFactoryDashboard() {
 
               {downloadStatus && (
                 <div
-                  className={`p-3 rounded-md text-sm ${downloadStatus.includes("✅")
+                  className={`p-3 rounded-md text-sm ${downloadStatus.includes("âœ…")
                     ? "bg-green-50 border border-green-200 text-green-800"
                     : "bg-blue-50 border border-blue-200 text-blue-800"
                     }`}
                 >
-                  {downloadStatus.includes("✅") ? (
+                  {downloadStatus.includes("âœ…") ? (
                     <div>
                       <p className="font-medium">{downloadStatus}</p>
                       <p className="text-xs mt-1 opacity-75">
-                        📱 On mobile: Check your Downloads folder or browser's download notification
+                        ðŸ“± On mobile: Check your Downloads folder or browser's download notification
                       </p>
                     </div>
                   ) : (
