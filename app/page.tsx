@@ -761,7 +761,7 @@ export default function TeaFactoryDashboard() {
     const headers = [
       "# Tea Factory Louver Control System - Last 24 Hours Data",
       `# Export Date: ${new Date().toLocaleString()}`,
-      `# Time Range: Last 24 hours (${startTime.toLocaleString()} to ${now.toLocaleString()})`,
+      `# Time Range: ${startTime.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })} to ${endTime.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
       `# Data Points: ${filteredData.length} readings`,
       "",
       "Timestamp (Local Time),Dry Temperature (°F),Relative Humidity (%),Wet Temperature (°F),Depression (°F),Louver Status",
